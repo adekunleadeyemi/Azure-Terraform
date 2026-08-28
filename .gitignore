@@ -1,0 +1,6 @@
+*.tfvars
+*.alzlib*
+*.terraform*
+*terraform.tfstate*
+*terraform.tfvars*
+*/terraform.tfvars*
