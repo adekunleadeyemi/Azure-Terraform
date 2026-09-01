@@ -42,52 +42,103 @@
 #       with:
 #         cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-name: 'Terraform'
+name: Terraform
 
 on:
   push:
-    branches: [ "master" ]
+    branches:
+      - master
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  terraform:
-    name: 'Terraform'
+  terraform-plan:
+    name: Plan - ${{ matrix.working-directory }}
     runs-on: ubuntu-latest
-    environment: production
 
-    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
-    defaults:
-      run:
-        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        working-directory:
+          - 01-alz
+          - 02-connectivity
+          - 03-identity
 
     steps:
-    # Checkout the repository to the GitHub Actions runner
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # Install the latest version of Terraform CLI and configure the Terraform CLI configuration file with a Terraform Cloud user API token
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v1
-      with:
-        cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - name: Verify Terraform configuration
+        shell: bash
+        run: |
+          directory="${{ matrix.working-directory }}"
 
-    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
-    - name: Terraform Init
-      run: terraform init
+          if [ ! -d "$directory" ]; then
+            echo "::error::Directory '$directory' does not exist."
+            exit 1
+          fi
 
-    # Checks that all Terraform configuration files adhere to a canonical format
-    - name: Terraform Format
-      run: terraform fmt -check
+          if ! find "$directory" -maxdepth 1 -name '*.tf' -print -quit | grep -q .; then
+            echo "::error::No Terraform files found in '$directory'."
+            exit 1
+          fi
 
-    # Generates an execution plan for Terraform
-    - name: Terraform Plan
-      run: terraform plan -input=false
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      # On push to "master", build or change infrastructure according to Terraform configuration files
-      # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
-    - name: Terraform Apply
-      if: github.ref == 'refs/heads/"master"' && github.event_name == 'push'
-      run: terraform apply -auto-approve -input=false
+      - name: Terraform Format
+        run: terraform -chdir=${{ matrix.working-directory }} fmt -check
+
+      - name: Terraform Init
+        run: terraform -chdir=${{ matrix.working-directory }} init -input=false
+
+      - name: Terraform Validate
+        run: terraform -chdir=${{ matrix.working-directory }} validate
+
+      - name: Terraform Plan
+        run: terraform -chdir=${{ matrix.working-directory }} plan -input=false
+
+  terraform-apply:
+    name: Apply
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      # Apply sequentially so foundational infrastructure is completed first.
+      - name: Terraform Apply
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          directories=(
+            "01-alz"
+            "02-connectivity"
+            "03-identity"
+          )
+
+          for directory in "${directories[@]}"; do
+            echo "::group::Applying $directory"
+
+            terraform -chdir="$directory" init -input=false
+            terraform -chdir="$directory" apply \
+              -auto-approve \
+              -input=false
+
+            echo "::endgroup::"
+          done
