@@ -64,7 +64,7 @@ jobs:
         working-directory:
           - 01-alz
           - 02-connectivity
-          - 03-identity
+          - 03-application
 
     steps:
       - name: Checkout
@@ -129,7 +129,7 @@ jobs:
           directories=(
             "01-alz"
             "02-connectivity"
-            "03-identity"
+            "03-application"
           )
 
           for directory in "${directories[@]}"; do
