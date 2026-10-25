@@ -20,12 +20,26 @@ variable "administrator_password" {
   sensitive   = true
 }
 
+# variable "allowed_client_ip" {
+#   description = "Public IPv4 address of your laptop or CI agent, without a /32 suffix."
+#   type        = string
+
+#   validation {
+#     condition     = can(cidrnetmask("${var.allowed_client_ip}/32")) && var.allowed_client_ip != "0.0.0.0"
+#     error_message = "Enter a single IPv4 address other than 0.0.0.0."
+#   }
+# }
+
 variable "allowed_client_ip" {
-  description = "Public IPv4 address of your laptop or CI agent, without a /32 suffix."
-  type        = string
+  description = "Public IPv4 addresses allowed to connect."
+  type        = list(string)
+  nullable    = false
 
   validation {
-    condition     = can(cidrnetmask("${var.allowed_client_ip}/32")) && var.allowed_client_ip != "0.0.0.0"
-    error_message = "Enter a single IPv4 address other than 0.0.0.0."
+    condition = alltrue([
+      for ip in var.allowed_client_ip :
+      can(cidrnetmask("${ip}/32")) && ip != "0.0.0.0"
+    ])
+    error_message = "Each entry must be an IPv4 address other than 0.0.0.0, without a CIDR suffix."
   }
 }

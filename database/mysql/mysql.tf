@@ -36,11 +36,21 @@ resource "azurerm_mysql_flexible_database" "db" {
   collation           = "utf8mb4_unicode_ci"
 }
 
+# resource "azurerm_mysql_flexible_server_firewall_rule" "client" {
+#   name                = "allow-client-ip"
+#   resource_group_name = azurerm_resource_group.db.name
+#   server_name         = azurerm_mysql_flexible_server.db.name
+#   start_ip_address    = var.allowed_client_ip
+#   end_ip_address      = var.allowed_client_ip
+# }
+
 resource "azurerm_mysql_flexible_server_firewall_rule" "client" {
-  name                = "allow-client-ip"
+  for_each = toset(var.allowed_client_ip)
+
+  name                = "allow-client-${replace(each.value, ".", "-")}"
   resource_group_name = azurerm_resource_group.db.name
   server_name         = azurerm_mysql_flexible_server.db.name
-  start_ip_address    = var.allowed_client_ip
-  end_ip_address      = var.allowed_client_ip
+  start_ip_address    = each.value
+  end_ip_address      = each.value
 }
 
